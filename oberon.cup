@@ -1,0 +1,208 @@
+package grammar;
+import java_cup.runtime.*;
+import java.util.*;
+import exceptions.*;
+import flowchart.*;
+
+/*Preliminaries to set up and use the scanner.  */
+parser code 
+{:
+    private Module module;
+	public void show(){
+		module.show();
+	}
+:}
+
+init with 
+{:
+	module=new Module("temp");
+:}
+
+
+/*arithmetic operator*/
+terminal String	    PLUS, MINUS, TIMES, DIVIDE, MOD, ASSIGN;
+/*logical operator*/
+terminal String		EQ, NEQ, LT, LE, GT, GE, OR, AND, NOT;
+/*keyword*/
+terminal String     INTEGER, BOOLEAN, READ, WRITE, WRITELN, RECORD, ARRAY, MODULE, CONST, TYPE, VAR, PROCEDURE; 
+/*reserved word*/
+terminal String     IF, THEN, ELSIF, ELSE, WHILE, DO, BEGIN, END, OF;
+/*other tokens*/
+terminal String     SEMI, COLON, COMMA, PERIOD, LBRACKET, RBRACKET, LPAREN, RPAREN;
+/*identifier, number*/
+terminal String	IDENTIFIER, NUMBER;
+
+
+/*non terminals */
+non terminal 	module_block, declarations, procedure_declaration;
+non terminal	const_declare, type_declare, var_declare, const_list, type_list, var_list;
+non terminal	array_part, field_one, field_list;
+non terminal	var_if;
+non terminal 	type_id, identifier_list, array_type, record_type, type_but_array;
+non terminal 	formal_parameters, fp_section;
+
+non terminal AbstractStatement  	statement;
+non terminal WhileStatement 		while_statement;
+non terminal IfStatement  			if_statement;
+non terminal StatementSequence  	module_begin,procedure_begin,procedure_body,statement_sequence,elsif_statement, else_statement;
+non terminal PrimitiveStatement 	assignment, rw_statement,procedure_call;
+non terminal String 				procedure_heading,expression,expression_op,expression_if, ap_list, actual_parameters;
+non terminal String 				simple_expression,simple_expression_if,simple_expression_if_op,term,term_if,term_if_op,factor,selector;
+
+
+/*Precedences */
+precedence right ASSIGN;
+precedence left OR;
+precedence left AND;
+precedence right NOT;
+precedence left EQ, NEQ, LT, LE, GT, GE;
+precedence left PLUS, MINUS;
+precedence left TIMES, DIVIDE, MOD;
+precedence left LPAREN;
+
+
+
+/*The grammar */
+module_block ::= 	MODULE IDENTIFIER SEMI declarations module_begin END IDENTIFIER PERIOD ;
+
+module_begin ::=	BEGIN statement_sequence:sq {: RESULT=sq; :}
+		| /*empty*/;
+		
+
+/*----------------don't need to care-------------------------*/
+declarations ::=	const_declare type_declare var_declare procedure_declaration ;
+const_declare ::=	CONST const_list | /*empty*/ ;
+const_list	::=	const_list IDENTIFIER:id EQ expression:e SEMI 
+		| /*empty*/;
+type_declare ::=	TYPE type_list | /*empty*/;
+type_list ::=	type_list IDENTIFIER:id EQ type_id:t SEMI
+		| /*empty*/	;
+var_declare ::=	VAR var_list | /*empty*/ 	;
+var_list ::=		var_list identifier_list:id_list COLON type_id:t SEMI
+		| /*empty*/	;
+identifier_list ::=	IDENTIFIER:id
+		| identifier_list:id_list COMMA IDENTIFIER:id ;
+/*----------------don't need to care-------------------------*/
+
+
+procedure_declaration ::=	/*empty*/ 
+			| procedure_declaration procedure_heading:id SEMI procedure_body:v SEMI 
+				{: module.add(id).add(v); :};
+
+procedure_heading ::=	PROCEDURE IDENTIFIER:id formal_parameters:fp {: RESULT=id; :};
+
+procedure_body ::=		declarations procedure_begin:v END IDENTIFIER {: RESULT=v; :};
+
+procedure_begin ::=	BEGIN statement_sequence:sq {: RESULT=sq; :}
+		| /*empty*/	;
+
+formal_parameters ::=
+		{:		:}
+		| LPAREN RPAREN
+		{:
+		:}
+		| LPAREN fp_section:fp RPAREN
+		{:
+		:};
+
+fp_section ::=	fp_section:fp SEMI var_if identifier_list:id_list COLON type_id:t
+		{:
+		:}
+		| var_if identifier_list:id_list COLON type_id:t
+		{:
+		:};
+var_if ::=		VAR | ;
+type_id ::=		type_but_array: t
+		{:
+		:}
+		| array_type: t	
+		{:
+		:};
+type_but_array ::=	IDENTIFIER:id
+		{:
+		:}
+		| INTEGER 
+		{:
+		:}
+		| BOOLEAN
+		{:
+		:}
+		| record_type: t	
+		{: 
+		:};
+
+record_type ::=	RECORD field_list END	{::};
+field_list ::=	field_list SEMI field_one | field_one {::};
+field_one ::=	| identifier_list COLON type_id	{::};
+
+array_type ::=	array_part type_but_array	
+		{:
+		:};
+array_part ::=	array_part ARRAY expression OF | ARRAY expression OF{::};
+
+
+statement_sequence ::=	statement:v {: StatementSequence sq = new StatementSequence();sq.add(v);RESULT=sq; :}
+		| statement_sequence:sq SEMI statement:v	{: sq.add(v);RESULT=sq; :};
+statement	::=	assignment:v {: RESULT=v; :}
+		| procedure_call:v {: RESULT=v; :}
+		| if_statement:v {: RESULT=v; :}
+		| while_statement:v {: RESULT=v; :}
+		| rw_statement:v {: RESULT=v; :}
+		| /*empty*/	;
+
+rw_statement ::= READ:v1 LPAREN:v2 IDENTIFIER:v3 selector:v4 RPAREN:v5  {: RESULT=new PrimitiveStatement(v1+v2+v3+v4+v5); :}
+		| WRITE:v1 LPAREN:v2 IDENTIFIER:v3 selector:v4 RPAREN:v5 {: RESULT=new PrimitiveStatement(v1+v2+v3+v4+v5); :}
+		| WRITELN {: RESULT=new PrimitiveStatement("WRITELN"); :};
+while_statement ::=	WHILE expression:e DO statement_sequence:sq END	
+					{: WhileStatement ws=new WhileStatement(e);ws.getLoopBody().add(sq);RESULT=ws; :};
+if_statement ::= IF expression:e THEN statement_sequence:v1 elsif_statement else_statement:v3 END	
+				{: IfStatement is = new IfStatement(e);is.getTrueBody().add(v1);if(v3!=null)is.getFalseBody().add(v3);RESULT=is; :};
+elsif_statement ::=	elsif_statement ELSIF expression THEN statement_sequence 
+		| /*empty*/;
+else_statement ::= ELSE statement_sequence:sq	{: RESULT=sq; :}	
+		|/*empty*/ ;
+
+procedure_call ::=	IDENTIFIER:id actual_parameters:ap	{: RESULT=new PrimitiveStatement(id+ap); :};
+actual_parameters::= LPAREN ap_list:ap RPAREN {: RESULT="("+ap+")"; :}
+					|{: :} ;
+ap_list ::=	 ap_list:ap COMMA expression:e {: RESULT = ap +","+ e; :}
+		|expression:e {: RESULT = e; :}
+		|{: RESULT=""; :};
+
+assignment ::=	IDENTIFIER:id selector:s  ASSIGN:v expression:e {: RESULT=new PrimitiveStatement(id+s+v+e); :};
+
+expression ::= 	simple_expression:v1 expression_if:v2 {: RESULT=v1+v2; :} ;
+expression_if ::= expression_op:v1 simple_expression:v2 {: RESULT=v1+v2; :}
+				| {: RESULT=""; :};
+expression_op ::= EQ:val{: RESULT=val; :}
+				|NEQ:val{: RESULT=val; :}
+				|LT:val{: RESULT=" &lt "; :}
+				|LE:val{: RESULT=" &lt= "; :}
+				|GT:val{: RESULT=" gt "; :}
+				|GE:val{: RESULT=" &gt= "; :} ;
+
+simple_expression ::= PLUS:v1 term:v2 simple_expression_if:v3 {: RESULT=v1+v2+v3; :}
+				|MINUS:v1 term:v2 simple_expression_if:v3 {: RESULT=v1+v2+v3; :}
+				|term:v1 simple_expression_if:v2 {: RESULT=v1+v2; :};
+simple_expression_if ::= simple_expression_if:v1 simple_expression_if_op:v2 term:v3 {: RESULT=v1+v2+v3; :}
+						|{: RESULT=""; :};
+simple_expression_if_op ::= PLUS:val {: RESULT=val; :}
+						|MINUS:val {: RESULT=val; :}
+						|OR:val {: RESULT=val; :};
+
+term ::= factor:v1 term_if:v2 {: RESULT=v1+v2; :};
+term_if ::= term_if:v1 term_if_op:v2 term:v3 {: RESULT=v1+v2+v3; :}
+		|{: RESULT=""; :};
+term_if_op ::= TIMES:v1 {: RESULT=v1; :}
+			|DIVIDE:v1 {: RESULT=v1; :}
+			|MOD:v1 {: RESULT=v1; :}
+			|AND:v1 {: RESULT=v1; :};
+
+factor ::= IDENTIFIER:v1 selector:v2 {: RESULT=v1+v2; :}
+			|NUMBER:v {: RESULT=v; :}
+			|LPAREN expression:v RPAREN {: RESULT="("+v+")"; :}
+			|NOT factor:v {: RESULT="~"+v; :};
+
+selector ::=  selector:s PERIOD IDENTIFIER:id	{: RESULT=s+"."+id; :}
+		| selector:s LBRACKET expression:e RBRACKET {: RESULT=s+"["+e+"]"; :}
+		| {: RESULT=""; :};
